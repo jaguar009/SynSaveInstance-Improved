@@ -34,10 +34,20 @@ end
 local global_container
 do
 	local filename = "UniversalMethodFinder"
+	local function downloadDependency(url)
+		local lastError
+		for attempt = 1, 3 do
+			local ok, result = pcall(game.HttpGet, game, url, true)
+			if ok then return result end
+			lastError = result
+			if attempt < 3 then task.wait(attempt) end
+		end
+		error("Could not load dependency " .. url .. ": " .. tostring(lastError), 0)
+	end
 
 	local finder
 	finder, global_container = loadstring(
-		game:HttpGet("https://raw.githubusercontent.com/rbxlx/SomeHub/main/" .. filename .. ".luau", true),
+		downloadDependency("https://raw.githubusercontent.com/rbxlx/SomeHub/main/" .. filename .. ".luau"),
 		filename
 	)()
 
@@ -2125,6 +2135,10 @@ local GLOBAL_ENV = getgenv and getgenv() or _G or shared
 --- * Note: Options are case-insensitive, meaning you could type `NilInstances` option as `nilInStaNces` and it would still be valid.
 --- @within SynSaveInstance
 --- @field __DEBUG_MODE boolean -- This will print debug logs to console about unusual scenarios. Recommended to enable if you wish to help us improve our products and find bugs / issues with it! ___Default:___ false
+--- @field DownloadRetries number -- Retry count for network downloads. Default: 2
+--- @field OnProgress function -- Receives stage, completed, total. Default: false
+--- @field ErrorReport boolean -- Writes a JSON report of skipped content and errors. Default: false
+--- @field ValidateOutput boolean -- Reads back and checks the saved file. Requires readfile. Default: false
 --- @field ReadMe boolean --___Default:___ true
 --- @field SafeMode boolean -- Kicks you before Saving, which prevents you from being detected in any game. **HIGHLY RECOMMENDED TO KEEP ENABLED**. ___Default:___ true
 --- @field KillAllScripts boolean -- Kills all scripts to further protect you from detections. SafeMode also enables this by default. **HIGHLY RECOMMENDED TO KEEP ENABLED**. ___Default:___ true
@@ -2187,7 +2201,7 @@ local GLOBAL_ENV = getgenv and getgenv() or _G or shared
 	Saves instances with specified options. Example:
 	```lua
 	local Params = {
-		RepoURL = "https://raw.githubusercontent.com/jaguar009/SynSaveInstance/main/",
+		RepoURL = "https://raw.githubusercontent.com/jaguar009/SynSaveInstance-Improved/main/",
 		SSI = "saveinstance",
 	}
 
@@ -2233,6 +2247,10 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 
 		-- Binary = false, -- true in syn newer versions (false in our case because no binary support yet), Description: Saves everything in Binary Mode (rbxl/rbxm).
 		Callback = false,
+		DownloadRetries = 2,
+		OnProgress = false,
+		ErrorReport = false,
+		ValidateOutput = false,
 		--Clipboard/CopyToClipboard = false, -- Description: If set to true, the serialized data will be set to the clipboard, which can be later pasted into studio easily. Useful for saving models. (Binary Only)
 		-- MaxThreads = 3 -- Description: The number of decompilation threads that can run at once. More threads means it can decompile for scripts at a time.
 		-- DisableCompression = false, --Description: Disables compression in the binary output
@@ -2441,6 +2459,38 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 			CustomOptions = {}
 		end
 	end
+
+	local failures = {}
+	local failureCount = 0
+	local function reportFailure(kind, instance, detail)
+		if not OPTIONS.ErrorReport then return end
+		failureCount = failureCount + 1
+		if #failures >= 1000 then return end
+		local path = tostring(instance)
+		if instance then
+			local ok, fullName = pcall(instance.GetFullName, instance)
+			if ok then path = fullName end
+		end
+		table.insert(failures, { kind = kind, path = path, detail = tostring(detail) })
+	end
+	local function emitProgress(stage, completed, total)
+		if type(OPTIONS.OnProgress) ~= "function" then return end
+		local ok, err = pcall(OPTIONS.OnProgress, stage, completed, total)
+		if not ok then warn("OnProgress failed:", err) end
+	end
+	local function fetchWithRetry(url)
+		local retryCount = math.clamp(math.floor(tonumber(OPTIONS.DownloadRetries) or 2), 0, 5)
+		local lastError
+		for attempt = 1, retryCount + 1 do
+			local ok, result = pcall(game.HttpGet, game, url, true)
+			if ok then return result end
+			lastError = result
+			if attempt <= retryCount then task.wait(math.min(attempt, 3)) end
+		end
+		reportFailure("download", nil, url .. ": " .. tostring(lastError))
+		error("Download failed: " .. url .. " (" .. tostring(lastError) .. ")", 0)
+	end
+	emitProgress("preparing", 0, 1)
 
 	if not writefile and not OPTIONS.Callback then
 		-- appendfile could be used a fallback but what kind of exec has appendfile without writefile
@@ -2929,7 +2979,8 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 					result = string.gsub(result, "\0", "\\0") -- ? Some decompilers sadly output \0 which prevents files from opening
 					output = result
 				else
-					output = "--[[ Failed to decompile. Reason:\n" .. (result or "") .. "\n]]"
+					reportFailure("decompile", script, result or "Unknown error")
+				output = "--[[ Failed to decompile. Reason:\n" .. (result or "") .. "\n]]"
 				end
 
 				if ScriptCache and bytecode then -- TODO there might(?) be an edgecase where it manages to decompile (built-in) even though getscriptbytecode failed, and the output won't get cached
@@ -3302,6 +3353,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 								if raw == __BREAK then -- ! Assuming __BREAK is always returned when there's a failure to read a property
 									local GHPFFailed, Fallback = Property.GHPFFailed, Property.Fallback
 									if GHPFFailed and not Fallback then
+										reportFailure("property", instance, PropertyName)
 										__DARKLUA_CONTINUE_65 = true
 										break
 									end
@@ -3336,6 +3388,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 									end
 
 									if raw == __BREAK then
+										reportFailure("property", instance, PropertyName)
 										__DARKLUA_CONTINUE_65 = true
 										break
 									end
@@ -3438,10 +3491,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 
 															local ok, source = pcall(function()
 																-- Credits @halffalse
-																return game:HttpGet(
-																	"https://assetdelivery.roproxy.com/v1/asset/?"
-																		.. asset
-																)
+																return fetchWithRetry("https://assetdelivery.roproxy.com/v1/asset/?" .. asset)
 															end)
 
 															if ok and filterLinkedSource(source) then
@@ -3593,7 +3643,11 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		end
 	end
 
+	local writeTarget = (renamefile and OPTIONS.AvoidFileOverwrite and not OPTIONS.Callback) and placename .. ".partial" or placename
 	local function save_game()
+		if OPTIONS.ValidateOutput and not OPTIONS.Callback and not readfile then
+			error("ValidateOutput requires readfile", 0)
+		end
 		do
 			if IsModel then
 				--[[
@@ -3604,7 +3658,9 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 				header = header .. '<Meta name="ExplicitAutoJoints">true</Meta>'
 			end
 			if writefile and not OPTIONS.Callback then
-				writefile(placename, header) -- TODO This is sort of useless if writefile will be used at the end (like if AlternativeWritefile and Callback are unused)
+				if OPTIONS.AlternativeWritefile and appendfile and renamefile and OPTIONS.AvoidFileOverwrite then
+					writefile(writeTarget, header)
+				end
 			end
 		end
 
@@ -3811,6 +3867,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 				end
 			end
 
+			emitProgress("writing", 0, 1)
 			local Callback = OPTIONS.Callback
 			if Callback then
 				local totalstr = header
@@ -3818,7 +3875,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 					totalstr = totalstr .. chunk.str
 				end
 				Callback(totalstr, chunks, totalsize)
-			elseif OPTIONS.AlternativeWritefile and appendfile then
+			elseif OPTIONS.AlternativeWritefile and appendfile and renamefile and OPTIONS.AvoidFileOverwrite then
 				local SEGMENT_SIZE = 4145728 -- Celery has an arbitrary savefile/appendfile size limit of ~4MB for reasons unknown. This is a workaround to save the file in segments.
 
 				local totallen, currentlen = math.ceil(totalsize / SEGMENT_SIZE), 1
@@ -3833,10 +3890,11 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 							nil,
 							true,
 							appendfile,
-							placename,
+							writeTarget,
 							savestr
 						)
 						currentlen = currentlen + 1
+						emitProgress("writing", currentlen, totallen)
 
 						if i ~= length then
 							task.wait()
@@ -3853,10 +3911,22 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 					nil,
 					true,
 					writefile,
-					placename,
+					writeTarget,
 					totalstr
 				)
 			end
+			if OPTIONS.ValidateOutput and not Callback then
+				local expectedLength = #header
+				for _, chunk in next, chunks do expectedLength = expectedLength + #chunk.str end
+				local output = readfile(writeTarget)
+				if #output ~= expectedLength or not string.find(output, "</roblox>", 1, true) then
+					error("Output validation failed for " .. placename, 0)
+				end
+			end
+			if writeTarget ~= placename then
+				renamefile(writeTarget, placename)
+			end
+			emitProgress("written", 1, 1)
 		end
 	end
 
@@ -4161,10 +4231,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 					local rbxcrypt_base64encode
 					pcall(function()
 						local b64_enc_buf = loadstring(
-							game:HttpGet(
-								"https://raw.githubusercontent.com/daily3014/rbx-cryptography/refs/heads/main/src/Utilities/Base64.luau",
-								true
-							),
+							fetchWithRetry("https://raw.githubusercontent.com/daily3014/rbx-cryptography/refs/heads/main/src/Utilities/Base64.luau"),
 							"Base64"
 						)().Encode
 						rbxcrypt_base64encode = function(raw)
@@ -4172,21 +4239,26 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 						end
 					end)
 
-					local EncodingService = game:GetService("EncodingService")
-					local EncodingService_base64encode = function(raw)
-						return buffer.tostring(EncodingService:Base64Encode(buffer.fromstring(raw)))
+					local candidates = {}
+					local base64Works, encoded = pcall(base64encode, "\1\0\0\0\1")
+					if base64Works and encoded == "AQAAAAE=" then
+						table.insert(candidates, base64encode)
 					end
-
-					-- * Tests if base64encode exists and works properly then benchmark it
-					if base64encode and base64encode("\1\0\0\0\1") == "AQAAAAE=" then
-						if rbxcrypt_base64encode then
-							base64encode = benchmark(
-								{ base64encode, rbxcrypt_base64encode, EncodingService_base64encode },
-								test_str
-							)
+					if rbxcrypt_base64encode then
+						local ok = pcall(rbxcrypt_base64encode, test_str)
+						if ok then table.insert(candidates, rbxcrypt_base64encode) end
+					end
+					local serviceOk, EncodingService = pcall(game.GetService, game, "EncodingService")
+					if serviceOk then
+						local encode = function(raw)
+							return buffer.tostring(EncodingService:Base64Encode(buffer.fromstring(raw)))
 						end
+						if pcall(encode, test_str) then table.insert(candidates, encode) end
+					end
+					if #candidates > 0 then
+						base64encode = benchmark(candidates, test_str)
 					else
-						base64encode = rbxcrypt_base64encode
+						base64encode = nil
 					end
 
 					if not base64encode then
@@ -4197,7 +4269,13 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 				end
 			end
 			do
-				local ok, result = pcall(FetchAPI)
+				local ok, result
+				local retryCount = math.clamp(math.floor(tonumber(OPTIONS.DownloadRetries) or 2), 0, 5)
+				for attempt = 1, retryCount + 1 do
+					ok, result = pcall(FetchAPI)
+					if ok then break end
+					if attempt <= retryCount then task.wait(math.min(attempt, 3)) end
+				end
 				if ok then
 					ClassList = result
 				else
@@ -4211,6 +4289,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 
 		elapse_t = os.clock()
 
+		emitProgress("saving", 0, 1)
 		local ok, err = xpcall(save_game, function(err)
 			return debug.traceback(err)
 		end)
@@ -4258,6 +4337,17 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 			end)
 		end
 
+		if OPTIONS.ErrorReport then
+			if not ok then reportFailure("save", nil, err) end
+			local report = service.HttpService:JSONEncode({ success = ok, failureCount = failureCount, failures = failures })
+			if writefile then
+				local reportOk, reportErr = pcall(writefile, placename .. ".errors.json", report)
+				if not reportOk then warn("Could not write error report:", reportErr) end
+			else
+				warn("Save report:", report)
+			end
+		end
+		emitProgress(ok and "complete" or "failed", 1, 1)
 		if OPTIONS.ShutdownWhenDone and ok then
 			task.wait(Log10 * 2 + ExtraTime)
 			game:Shutdown()
@@ -4265,4 +4355,18 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 	end
 end
 
-return synsaveinstance
+local function runSynSaveInstance(...)
+	local arguments = { ... }
+	local count = select("#", ...)
+	local ok, result = xpcall(function()
+		return synsaveinstance(unpack(arguments, 1, count))
+	end, debug.traceback)
+	if not ok then
+		GLOBAL_ENV.USSI = nil
+		warn(result)
+		error(result, 0)
+	end
+	return result
+end
+
+return runSynSaveInstance

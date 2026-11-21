@@ -7,7 +7,7 @@
 
 ```lua
 local Params = {
- RepoURL = "https://raw.githubusercontent.com/jaguar009/SynSaveInstance/main/",
+ RepoURL = "https://raw.githubusercontent.com/jaguar009/SynSaveInstance-Improved/main/",
  SSI = "saveinstance",
 }
 local synsaveinstance = loadstring(game:HttpGet(Params.RepoURL .. Params.SSI .. ".luau", true), Params.SSI)()
@@ -15,6 +15,21 @@ local Options = {} -- Documentation here https://luau.github.io/UniversalSynSave
 synsaveinstance(Options)
 ```
 
+
+## Additional options
+
+```lua
+local Options = {
+    DownloadRetries = 2, -- Retries the API dump download after a failure (0–5)
+    OnProgress = function(stage, completed, total)
+        print(stage, completed, total)
+    end,
+    ErrorReport = true, -- Writes <output>.errors.json with skipped properties and decompilation failures
+    ValidateOutput = true, -- Reads back the saved file; requires the executor's readfile function
+}
+```
+
+The initial helper download is retried twice automatically. When `renamefile` is available and `AvoidFileOverwrite` is enabled, the output is written to a `.partial` file until saving completes. The script reports a download URL on startup failure and allows a new run after a synchronous error.
 # Universal Syn Save Instance
 
 Or shortly USSI, a project aimed at resurrecting saveinstance function from Synapse X.<br />
@@ -24,7 +39,7 @@ Reason: Many tools fail miserably at providing good user experience when it come
 > As stated under the Section 7 (b) in the LICENSE:
 > - You **MUST** always include the following Credit string: `UniversalSynSaveInstance https://discord.gg/wx4ThpAsmw`
 > - You are **NOT** allowed to claim authorship of the source code provided in this repository
-> - You **MUST** always include the following [License](https://github.com/luau/UniversalSynSaveInstance/blob/main/LICENSE)
+> - You **MUST** always include the following [License](LICENSE)
 
 ## Disclaimer
 
