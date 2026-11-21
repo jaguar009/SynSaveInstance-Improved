@@ -2328,7 +2328,6 @@ local GLOBAL_ENV = getgenv and getgenv() or _G or shared
 --- @field OnProgress function -- Receives stage, completed, total. Default: false
 --- @field ErrorReport boolean -- Writes a JSON report of skipped content and errors. Default: false
 --- @field ValidateOutput boolean -- Reads back and checks the saved file. Requires readfile. Default: false
---- @field ReadMe boolean --___Default:___ false
 --- @field SafeMode boolean -- Kicks you before Saving, which keeps you safe. **HIGHLY RECOMMENDED TO KEEP ENABLED**. ___Default:___ true
 --- @field KillAllScripts boolean -- Kills all scripts to further protect you. SafeMode also enables this by default. **HIGHLY RECOMMENDED TO KEEP ENABLED**. ___Default:___ true
 --- @field BoostFPS boolean -- Massively boosts FPS by disabling 3D rendering. Other options also enable it, like: SafeMode. ___Default:___ false
@@ -2486,7 +2485,6 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		ShutdownWhenDone = false,
 		AntiIdle = true,
 		Anonymous = false,
-		ReadMe = false,
 		FilePath = false,
 		AvoidFileOverwrite = true,
 		Object = false,
@@ -2889,11 +2887,8 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 
 	local ldeccache = GLOBAL_ENV.scriptcache
 
-	local DecompileIgnoring, ToSaveList, ldecompile, placename, elapse_t, SaveNotCreatableWillBeEnabled, RecoveredScripts
+	local DecompileIgnoring, ToSaveList, ldecompile, placename, elapse_t, SaveNotCreatableWillBeEnabled
 
-	if OPTIONS.ReadMe then
-		RecoveredScripts = {}
-	end
 
 	if ScriptCache and not ldeccache then
 		ldeccache = {}
@@ -3783,10 +3778,6 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 										local hasLinkedSource = LinkedSource_Url ~= ""
 										local LinkedSource_type
 										if hasLinkedSource then
-											local Path = instance:GetFullName()
-											if RecoveredScripts then
-												table.insert(RecoveredScripts, Path)
-											end
 
 											LinkedSource = string.match(LinkedSource_Url, "%w+$") -- TODO: No sure if this pattern matches all possible cases. Example is: 'rbxassetid://0&hash=cd73dd2fe5e5013137231c227da3167e'
 											if LinkedSource then
@@ -4042,76 +4033,6 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 			save_extra("Nil Instances", nil_instances)
 		end
 
-		if OPTIONS.ReadMe then
-			save_extra(
-				"README",
-				nil,
-				nil,
-				"Script",
-				"--[[\n"
-					.. (#RecoveredScripts ~= 0 and "\t\tIMPORTANT: Original Source of these Scripts was Recovered: " .. service.HttpService:JSONEncode(
-						RecoveredScripts
-					) .. "\n" or "")
-					.. [[
-
-
-		If you didn't save in Binary (rbxl) - it's recommended to save the game right away to take advantage of the binary format & to preserve values of certain properties if you used IgnoreDefaultProperties setting (as they might change in the future).
-		You can do that by going to FILE -> Save to File As -> Make sure File Name ends with .rbxl -> Save
-
-		ServerStorage, ServerScriptService and Server Scripts are IMPOSSIBLE to save because of FilteringEnabled.
-
-		If your player cannot spawn into the game, please move the scripts in StarterPlayer somewhere else or delete them. Then run `game:GetService("Players").CharacterAutoLoads = true`.
-		And use "Play Here" to start game instead of "Play" to spawn your Character where your Camera currently is.
-
-		If the chat system does not work, please use the explorer and delete everything inside the TextChatService/Chat service(s). 
-		Or run `game:GetService("Chat"):ClearAllChildren() game:GetService("TextChatService"):ClearAllChildren()`
-				
-		If Union and MeshPart collisions don't work, run the script below in the Studio Command Bar:
-				
-				
-		local C = game:GetService("CoreGui")
-		local D = Enum.CollisionFidelity.Default
-				
-		for _, v in game:GetDescendants() do
-			if v:IsA("TriangleMeshPart") and not v:IsDescendantOf(C) then
-				v.CollisionFidelity = D
-			end
-		end
-		print("Done")
-				
-		If you can't move the Camera, run this script in the Studio Command Bar:
-			
-		workspace.CurrentCamera.CameraType = Enum.CameraType.Fixed
-		
-		Or Destroy the Camera.
-
-		This file was generated with the following settings:
-		]]
-					.. service.HttpService:JSONEncode(OPTIONS)
-					.. "\n\n\t\tElapsed time: "
-					.. os.clock() - elapse_t
-					.. " Date (UTC): "
-					.. DateTime.now():FormatUniversalTime("LL LTS", "en-gb")
-					.. " PlaceId: "
-					.. game.PlaceId
-					.. " PlaceVersion: "
-					.. game.PlaceVersion
-					.. " Client Version: "
-					.. FULL_VERSION
-					.. " Platform: "
-					.. (
-						select(
-							2,
-							pcall(function()
-								return service.UserInputService:GetPlatform().Name -- Won't work on lvl 2 execs but we can safely assume they're on PC (and likely Windows)
-							end)
-						) or "Unknown"
-					)
-					.. " Executor: "
-					.. (identify_executor and table.concat({ identify_executor() }, " ") or "Unknown")
-					.. "\n]]"
-			)
-		end
 		do
 			local tmp = { "<SharedStrings>" }
 			for value, identifier in SharedStrings do

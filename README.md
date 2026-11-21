@@ -13,7 +13,6 @@ local Params = {
 local synsaveinstance = loadstring(game:HttpGet(Params.RepoURL .. Params.SSI .. ".luau", true), Params.SSI)()
 local Options = {
     SafeMode = false,
-    ReadMe = false,
     AssetManifest = true,
     CaptureDuration = 10,
     MetadataReport = true,
