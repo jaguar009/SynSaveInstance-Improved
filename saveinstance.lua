@@ -3241,6 +3241,30 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 	end
 
 	local gethiddenproperty_fallback
+	local function hasLegacyContentValue(instance, propertyName, raw)
+		if instance.ClassName ~= "CharacterMesh" then
+			return false
+		end
+
+		local ok, sourceType = pcall(index, raw, "SourceType")
+		if not ok or sourceType ~= Enum.ContentSourceType.None then
+			return false
+		end
+
+		local prefix = string.match(propertyName, "^(.*)Content$")
+		if not prefix then
+			return false
+		end
+
+		for _, suffix in next, { "Id", "ID" } do
+			local readable, value = pcall(index, instance, prefix .. suffix)
+			if readable and (type(value) == "number" and value ~= 0 or type(value) == "string" and value ~= "" and value ~= "0") then
+				return true
+			end
+		end
+
+		return false
+	end
 
 	local function save_hierarchy(hierarchy)
 		for _, instance in next, hierarchy do
@@ -3429,6 +3453,11 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 
 								if SharedStringOverwrite and ValueType == "BinaryString" then -- TODO: Convert this to table if more types are added
 									ValueType = "SharedString"
+								end
+
+								if ValueType == "Content" and hasLegacyContentValue(instance, PropertyName, raw) then
+									__DARKLUA_CONTINUE_65 = true
+									break
 								end
 
 								-- Special = Property.Special -- ? Read TODO below (must be updated if it's used frequently afterwards)
