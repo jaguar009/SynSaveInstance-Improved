@@ -37,7 +37,7 @@ do
 
 	local finder
 	finder, global_container = loadstring(
-		game:HttpGet("https://raw.githubusercontent.com/luau/SomeHub/main/" .. filename .. ".luau", true),
+		game:HttpGet("https://raw.githubusercontent.com/rbxlx/SomeHub/main/" .. filename .. ".luau", true),
 		filename
 	)()
 
@@ -2385,7 +2385,7 @@ local GLOBAL_ENV = getgenv and getgenv() or _G or shared
 	Saves instances with specified options. Example:
 	```lua
 	local Params = {
-		RepoURL = "https://raw.githubusercontent.com/luau/UniversalSynSaveInstance/main/",
+		RepoURL = "https://raw.githubusercontent.com/jaguar009/SynSaveInstance/main/",
 		SSI = "saveinstance",
 	}
 
