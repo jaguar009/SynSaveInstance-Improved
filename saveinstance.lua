@@ -2159,6 +2159,8 @@ local GLOBAL_ENV = getgenv and getgenv() or _G or shared
 --- @field SaveBytecode boolean -- Includes bytecode in the output. Useful if you wish to be able to decompile it yourself later. ___Default:___ false
 --- .DecompileIgnore {Instance | Instance.ClassName | [Instance.ClassName] = {Instance.Name}} -- * Ignores match & it's descendants by default. To Ignore only the instance itself set the value to `= false`. Examples: "Chat", - Matches any instance with "Chat" ClassName, Players = {"MyPlayerName"} - Matches "Players" Class AND "MyPlayerName" Name ONLY, `workspace` - matches Instance by reference, `[workspace] = false` - matches Instance by reference and only ignores the instance itself and not it's descendants. ___Default:___ {TextChatService}
 --- .IgnoreList {Instance | Instance.ClassName | [Instance.ClassName] = {Instance.Name}} -- Structure is similar to **@DecompileIgnore** except `= false` meaning if you ignore one instance it will automatically ignore it's descendants. ___Default:___ {CoreGui, CorePackages}
+--- @field StudioClean boolean -- Omits known client-only Workspace objects, camera effects, and the default PlayerModule from full place exports. Set false to retain them. ___Default:___ true
+--- @field StudioCleanWorkspaceNames {string} -- Names of top-level Workspace objects omitted by StudioClean. ___Default:___ {EfectosLocales, NubesLocales, VerityGuiaLocal, MonstruosVisuales}
 --- .ExtraInstances {Instance} -- If used with any invalid mode (like "invalidmode") it will only save these instances. ___Default:___ {}
 --- @field IgnoreProperties table -- Ignores properties by Name. ___Default:___ {}
 --- @field SaveCacheInterval number -- The less the value the more often it saves, but that would mean less performance due to constantly saving. ___Default:___ 0x1600 * 10
@@ -2274,6 +2276,8 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		IgnoreProperties = {},
 
 		IgnoreList = { "CoreGui", "CorePackages" },
+		StudioClean = true,
+		StudioCleanWorkspaceNames = { "EfectosLocales", "NubesLocales", "VerityGuiaLocal", "MonstruosVisuales" },
 
 		ExtraInstances = {},
 		NilInstances = false,
@@ -2662,6 +2666,27 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		OPTIONS.mode = "full"
 		ToSaveInstance = nil
 		IsModel = nil
+	end
+
+	if OPTIONS.StudioClean and not ToSaveInstance and not IsModel then
+		local workspace = service.Workspace
+		local runtimeNames = ArrayToDict(OPTIONS.StudioCleanWorkspaceNames)
+		for _, child in next, workspace:GetChildren() do
+			if runtimeNames[child.Name] or string.match(child.Name, "^Mascota_%d+$") then
+				IgnoreList[child] = true
+			end
+		end
+		local camera = workspace.CurrentCamera
+		if camera then
+			for _, child in next, camera:GetChildren() do
+				IgnoreList[child] = true
+			end
+		end
+		local starterScripts = service.StarterPlayer:FindFirstChildOfClass("StarterPlayerScripts")
+		local playerModule = starterScripts and starterScripts:FindFirstChild("PlayerModule")
+		if playerModule and playerModule:IsA("ModuleScript") then
+			IgnoreList[playerModule] = true
+		end
 	end
 
 	local function isLuaSourceContainer(instance)

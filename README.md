@@ -13,6 +13,7 @@ local Params = {
 local synsaveinstance = loadstring(game:HttpGet(Params.RepoURL .. Params.SSI .. ".luau", true), Params.SSI)()
 local Options = {
     SafeMode = false,
+    StudioClean = true,
     AssetManifest = true,
     CaptureDuration = 10,
     MetadataReport = true,
@@ -42,6 +43,9 @@ local Options = {
 The initial helper download is retried twice automatically. When `renamefile` is available and `AvoidFileOverwrite` is enabled, the output is written to a `.partial` file until saving completes. The script reports a download URL on startup failure and allows a new run after a synchronous error.
 
 The additional JSON files are written beside the saved place file. `CaptureDuration` records the instances seen during the observation window, including those that disappeared before the save completed. The asset manifest lists references that are readable from the client. It does not download the binary asset files.
+
+Full place exports use `StudioClean = true` by default. This omits the known local Workspace folders `EfectosLocales`, `NubesLocales`, `VerityGuiaLocal`, and `MonstruosVisuales`, top-level `Mascota_<number>` objects, children of the current camera, and the default `PlayerModule` under `StarterPlayerScripts`. Set `StudioClean = false` to retain them, or replace `StudioCleanWorkspaceNames` with a list of top-level Workspace names for a different experience. This only filters known client-side objects; it does not recreate server scripts or turn a client capture into an original Studio source project.
+
 # Universal Syn Save Instance
 
 Or shortly USSI, a project aimed at resurrecting saveinstance function from Synapse X.<br />
