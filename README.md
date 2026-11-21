@@ -11,7 +11,13 @@ local Params = {
  SSI = "saveinstance",
 }
 local synsaveinstance = loadstring(game:HttpGet(Params.RepoURL .. Params.SSI .. ".luau", true), Params.SSI)()
-local Options = {} -- Documentation here https://luau.github.io/UniversalSynSaveInstance/api/SynSaveInstance
+local Options = {
+    SafeMode = false,
+    AssetManifest = true,
+    CaptureDuration = 10,
+    MetadataReport = true,
+    MissingContentReport = true,
+}
 synsaveinstance(Options)
 ```
 
@@ -20,6 +26,10 @@ synsaveinstance(Options)
 
 ```lua
 local Options = {
+    AssetManifest = true, -- Writes <output>.assets.json with asset references
+    CaptureDuration = 10, -- Observes instances for 10 seconds and writes <output>.captured.json
+    MetadataReport = true, -- Writes <output>.metadata.json with attributes, tags, and references
+    MissingContentReport = true, -- Writes <output>.missing.json with unavailable content
     DownloadRetries = 2, -- Retries the API dump download after a failure (0–5)
     OnProgress = function(stage, completed, total)
         print(stage, completed, total)
@@ -30,6 +40,8 @@ local Options = {
 ```
 
 The initial helper download is retried twice automatically. When `renamefile` is available and `AvoidFileOverwrite` is enabled, the output is written to a `.partial` file until saving completes. The script reports a download URL on startup failure and allows a new run after a synchronous error.
+
+The additional JSON files are written beside the saved place file. `CaptureDuration` records the instances seen during the observation window, including those that disappeared before the save completed. The asset manifest lists references that are readable from the client. It does not download the binary asset files.
 # Universal Syn Save Instance
 
 Or shortly USSI, a project aimed at resurrecting saveinstance function from Synapse X.<br />

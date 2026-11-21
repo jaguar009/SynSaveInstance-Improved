@@ -2320,6 +2320,10 @@ local GLOBAL_ENV = getgenv and getgenv() or _G or shared
 --- * Note: Options are case-insensitive, meaning you can type `NilInstances` option as `nilInStaNces` and it still will be valid.
 --- @within SynSaveInstance
 --- @field __DEBUG_MODE boolean -- This will print debug logs to console about unusual scenarios. Recommended to enable if you wish to help us improve our products and find bugs / issues with it! ___Default:___ false
+--- @field AssetManifest boolean -- Writes a JSON list of asset references visible to this client. Default: false
+--- @field CaptureDuration number -- Watches new instances for this many seconds before saving. Default: 0
+--- @field MetadataReport boolean -- Writes a JSON snapshot of visible instance metadata. Default: false
+--- @field MissingContentReport boolean -- Writes a JSON list of unavailable content. Default: false
 --- @field DownloadRetries number -- Retry count for network downloads. Default: 2
 --- @field OnProgress function -- Receives stage, completed, total. Default: false
 --- @field ErrorReport boolean -- Writes a JSON report of skipped content and errors. Default: false
@@ -2445,6 +2449,10 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 
 		-- Binary = false, -- true in syn newer versions (false in our case because no binary support yet), Description: Saves everything in Binary Mode (rbxl/rbxm).
 		Callback = false,
+		AssetManifest = false,
+		CaptureDuration = 0,
+		MetadataReport = false,
+		MissingContentReport = false,
 		DownloadRetries = 2,
 		OnProgress = false,
 		ErrorReport = false,
@@ -2686,7 +2694,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 	local failures = {}
 	local failureCount = 0
 	local function reportFailure(kind, instance, detail)
-		if not OPTIONS.ErrorReport then return end
+		if not OPTIONS.ErrorReport and not OPTIONS.MissingContentReport then return end
 		failureCount += 1
 		if #failures >= 1000 then return end
 		local path = tostring(instance)
@@ -2754,6 +2762,31 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		return
 	end
 
+	local capturedInstances = {}
+	local capturedSet = {}
+	local capturedSnapshots = {}
+	local function rememberInstance(instance)
+		if capturedSet[instance] then return end
+		capturedSet[instance] = true
+		table.insert(capturedInstances, instance)
+		local ok, snapshot = pcall(function()
+			return { path = instance:GetFullName(), className = instance.ClassName, name = instance.Name }
+		end)
+		if ok then capturedSnapshots[instance] = snapshot end
+	end
+	if OPTIONS.AssetManifest or OPTIONS.MetadataReport or tonumber(OPTIONS.CaptureDuration) and tonumber(OPTIONS.CaptureDuration) > 0 then
+		for _, instance in next, game:GetDescendants() do
+			rememberInstance(instance)
+		end
+	end
+	local captureDuration = math.clamp(tonumber(OPTIONS.CaptureDuration) or 0, 0, 300)
+	if captureDuration > 0 then
+		emitProgress("capturing", 0, 1)
+		local captureConnection = game.DescendantAdded:Connect(rememberInstance)
+		task.wait(captureDuration)
+		captureConnection:Disconnect()
+		emitProgress("capturing", 1, 1)
+	end
 	if OPTIONS.IgnoreDefaultPlayerScripts then
 		-- TODO This is a bad workaround, find a better automatic way
 		-- TODO Look into https://robloxapi.github.io/ref/class/LuaSourceContainer.html#member-isPlayerScript
@@ -3822,6 +3855,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 							savebuffer[savebuffer_size] = ReturnProperty(tag, PropertyName, value)
 							savebuffer_size += 1
 						else --if __DEBUG_MODE then -- * We print this anyway because very important
+							reportFailure("unsupported type", instance, ValueType .. "." .. PropertyName)
 							warn("UNSUPPORTED TYPE (OPEN A GITHUB ISSUE): ", ValueType, ClassName, PropertyName)
 						end
 					end
@@ -4557,6 +4591,87 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 			else
 				warn("Save report:", report)
 			end
+		end
+		local function writeJsonReport(suffix, data)
+			local encodedOk, encoded = pcall(service.HttpService.JSONEncode, service.HttpService, data)
+			if not encodedOk then
+				warn("Could not encode report " .. suffix .. ":", encoded)
+				return
+			end
+			if not writefile then
+				warn("Report " .. suffix .. " requires writefile")
+				return
+			end
+			local written, reason = pcall(writefile, placename .. suffix, encoded)
+			if not written then warn("Could not write report " .. suffix .. ":", reason) end
+		end
+		if captureDuration > 0 then
+			local captured = {}
+			for _, instance in next, capturedInstances do
+				local snapshot = capturedSnapshots[instance]
+				if snapshot then
+					local checkOk, present = pcall(instance.IsDescendantOf, instance, game)
+					snapshot.presentAtEnd = checkOk and present or false
+					table.insert(captured, snapshot)
+				end
+			end
+			writeJsonReport(".captured.json", { count = #captured, instances = captured })
+		end
+		if OPTIONS.AssetManifest or OPTIONS.MetadataReport then
+			local assets = {}
+			local metadata = {}
+			for _, instance in next, capturedInstances do
+				local inspected, reason = pcall(function()
+					local className = instance.ClassName
+					local fullName = instance:GetFullName()
+					local entry = { path = fullName, className = className, name = instance.Name }
+					if OPTIONS.MetadataReport then
+						local attributesOk, attributes = pcall(instance.GetAttributes, instance)
+						entry.attributes = {}
+						if attributesOk then
+							for key, value in next, attributes do
+								entry.attributes[key] = { type = typeof(value), value = tostring(value) }
+							end
+						end
+						local tagsOk, tags = pcall(instance.GetTags, instance)
+						entry.tags = tagsOk and tags or {}
+						entry.references = {}
+					end
+					local class = ClassList and ClassList[className]
+					if class then
+						for _, property in next, GetInheritedProps(className) do
+							local isReference = property.ValueType == "Instance"
+							local isAsset = property.ValueType == "Content" or property.ValueType == "ContentId"
+							if OPTIONS.MetadataReport and isReference or OPTIONS.AssetManifest and isAsset then
+								local readOk, value = pcall(function() return instance[property.Name] end)
+								if readOk and value ~= nil then
+									if isReference and typeof(value) == "Instance" and OPTIONS.MetadataReport then
+										entry.references[property.Name] = value:GetFullName()
+									elseif isAsset and OPTIONS.AssetManifest then
+										local asset = tostring(value)
+										if typeof(value) == "Content" then
+											local uriOk, uri = pcall(function() return value.Uri end)
+											if uriOk then asset = tostring(uri) end
+										end
+										if asset ~= "" then
+											table.insert(assets, { path = fullName, property = property.Name, asset = asset })
+										end
+									end
+								elseif not readOk then
+									reportFailure(isAsset and "asset" or "reference", instance, property.Name .. ": " .. tostring(value))
+								end
+							end
+						end
+					end
+					if OPTIONS.MetadataReport then table.insert(metadata, entry) end
+				end)
+				if not inspected then reportFailure("metadata", instance, reason) end
+			end
+			if OPTIONS.AssetManifest then writeJsonReport(".assets.json", { count = #assets, assets = assets }) end
+			if OPTIONS.MetadataReport then writeJsonReport(".metadata.json", { count = #metadata, instances = metadata }) end
+		end
+		if OPTIONS.MissingContentReport then
+			writeJsonReport(".missing.json", { count = failureCount, items = failures })
 		end
 		emitProgress(ok and "complete" or "failed", 1, 1)
 		if OPTIONS.ShutdownWhenDone and ok then
