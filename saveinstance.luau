@@ -3478,6 +3478,21 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		return prop_list
 	end
 
+	local serializedPropertyTypes = {}
+	local function GetSerializedPropertyTypes(className)
+		local cached = serializedPropertyTypes[className]
+		if cached then
+			return cached
+		end
+
+		local types = {}
+		for _, property in GetInheritedProps(className) do
+			types[property.Name] = property.ValueType
+		end
+		serializedPropertyTypes[className] = types
+		return types
+	end
+
 	local function save_cache()
 		local savestr = table.concat(savebuffer)
 
@@ -3523,11 +3538,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 	end
 
 	local gethiddenproperty_fallback
-	local function hasLegacyContentValue(instance, propertyName, raw)
-		if instance.ClassName ~= "CharacterMesh" then
-			return false
-		end
-
+	local function hasLegacyContentValue(instance, propertyName, raw, propertyTypes)
 		local ok, sourceType = pcall(index, raw, "SourceType")
 		if not ok or sourceType ~= Enum.ContentSourceType.None then
 			return false
@@ -3539,32 +3550,36 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		end
 
 		for _, suffix in { "Id", "ID" } do
-			local readable, value = pcall(index, instance, prefix .. suffix)
-			if readable and (type(value) == "number" and value ~= 0 or type(value) == "string" and value ~= "" and value ~= "0") then
-				return true
+			local legacyName = prefix .. suffix
+			if propertyTypes[legacyName] and not IgnoreProperties[legacyName] then
+				local readable, value = pcall(index, instance, legacyName)
+				if readable and (type(value) == "number" and value ~= 0 or type(value) == "string" and value ~= "" and value ~= "0") then
+					return true
+				end
 			end
 		end
 
 		return false
 	end
 
-	local function hasCharacterMeshContentValue(instance, propertyName)
-		if instance.ClassName ~= "CharacterMesh" then
-			return false
-		end
-
-		local prefix = string.match(propertyName, "^(.*)Id$")
+	local function hasSerializedContentValue(instance, propertyName, raw, propertyTypes)
+		local prefix = string.match(propertyName, "^(.*)Id$") or string.match(propertyName, "^(.*)ID$")
 		if not prefix then
 			return false
 		end
 
-		local readable, content = pcall(index, instance, prefix .. "Content")
+		local contentName = prefix .. "Content"
+		if propertyTypes[contentName] ~= "Content" or IgnoreProperties[contentName] then
+			return false
+		end
+
+		local readable, content = pcall(index, instance, contentName)
 		if not readable or not content then
 			return false
 		end
 
 		local ok, sourceType = pcall(index, content, "SourceType")
-		return ok and sourceType ~= Enum.ContentSourceType.None
+		return ok and (sourceType ~= Enum.ContentSourceType.None or raw == nil or raw == 0 or raw == "" or raw == "0")
 	end
 
 	local function save_hierarchy(hierarchy)
@@ -3679,6 +3694,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 						end
 					end
 
+					local propertyTypes = GetSerializedPropertyTypes(ClassNameOverride or ClassName)
 					for _, Property in GetInheritedProps(ClassNameOverride or ClassName) do
 						local PropertyName = Property.Name
 
@@ -3744,10 +3760,10 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 								end
 							end
 
-						if ValueType == "Content" and hasLegacyContentValue(instance, PropertyName, raw) then
+						if ValueType == "Content" and hasLegacyContentValue(instance, PropertyName, raw, propertyTypes) then
 							continue
 					end
-					if hasCharacterMeshContentValue(instance, PropertyName) then
+						if hasSerializedContentValue(instance, PropertyName, raw, propertyTypes) then
 						continue
 					end
 
