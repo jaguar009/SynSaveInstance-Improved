@@ -1,7 +1,7 @@
 --!native
 --!optimize 2
 --!divine-intellect
--- https://discord.gg/wx4ThpAsmw
+-- UniversalSynSaveInstance https://discord.gg/wx4ThpAsmw
 
 local function string_find(s, pattern)
 	return string.find(s, pattern, nil, true)
@@ -2143,7 +2143,7 @@ local GLOBAL_ENV = getgenv and getgenv() or _G or shared
 --- @field OnProgress function -- Receives stage, completed, total. Default: false
 --- @field ErrorReport boolean -- Writes a JSON report of skipped content and errors. Default: false
 --- @field ValidateOutput boolean -- Reads back and checks the saved file. Requires readfile. Default: false
---- @field ReadMe boolean --___Default:___ true
+--- @field ReadMe boolean --___Default:___ false
 --- @field SafeMode boolean -- Kicks you before Saving, which prevents you from being detected in any game. **HIGHLY RECOMMENDED TO KEEP ENABLED**. ___Default:___ true
 --- @field KillAllScripts boolean -- Kills all scripts to further protect you from detections. SafeMode also enables this by default. **HIGHLY RECOMMENDED TO KEEP ENABLED**. ___Default:___ true
 --- @field ShutdownWhenDone boolean -- Shuts the game down after saveinstance is finished. ___Default:___ false
@@ -2236,7 +2236,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 	local currentstr, currentsize, totalsize, chunks = "", 0, 0, table.create(1)
 	local savebuffer, savebuffer_size = {}, 1
 	local header =
-		'<!-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw --><roblox version="4">'
+		'<roblox version="4">'
 
 	local StatusText
 
@@ -2287,7 +2287,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		ShutdownWhenDone = false,
 		AntiIdle = true,
 		Anonymous = false,
-		ReadMe = true,
+		ReadMe = false,
 		FilePath = false,
 		AvoidFileOverwrite = true,
 		Object = false,
@@ -3559,6 +3559,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 															"-- [FilteringEnabled] Server Scripts are IMPOSSIBLE to save" -- TODO: Could be not just server scripts in the future
 													else
 														value = ldecompile(instance)
+												value = string.gsub(value, "^%s*%-%-%s*https://lua%.expert[^\r\n]*[\r\n]*", "", 1)
 														if SaveBytecode then
 															local output = SaveBytecode(instance)
 															if output then
@@ -3568,9 +3569,6 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 													end
 												end
 
-												value = "-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw\n\n"
-													.. (hasLinkedSource and "-- Original Source: https://assetdelivery.roblox.com/v1/asset/?" .. (LinkedSource_type or "id") .. "=" .. (LinkedSource or LinkedSource_Url) .. "\n\n" or "")
-													.. value
 											end
 										end
 										value = XML_Descriptors.__PROTECTEDSTRING(value)
@@ -3780,7 +3778,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 						RecoveredScripts
 					) .. "\n" or "")
 					.. [[
-		Thank you for using UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw.
+
 
 		If you didn't save in Binary (rbxl) - it's recommended to save the game right away to take advantage of the binary format & to preserve values of certain properties if you used IgnoreDefaultProperties setting (as they might change in the future).
 		You can do that by going to FILE -> Save to File As -> Make sure File Name ends with .rbxl -> Save
@@ -3845,7 +3843,7 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		end
 
 		savebuffer[savebuffer_size] =
-			"</roblox><!-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw -->"
+			"</roblox>"
 		savebuffer_size = savebuffer_size + 1
 		save_cache(true)
 		do
