@@ -2672,14 +2672,22 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		local mode = string.lower(OPTIONS.mode)
 		local tmp = table.clone(OPTIONS.ExtraInstances)
 
-		local PlaceName = game.PlaceId
-
-		pcall(function()
-			PlaceName = PlaceName .. " " .. service.MarketplaceService:GetProductInfoAsync(PlaceName).Name
-		end)
+		local PlaceName = game.Name
+		local found, productInfo = pcall(service.MarketplaceService.GetProductInfoAsync, service.MarketplaceService, game.PlaceId)
+		if found and productInfo and type(productInfo.Name) == "string" and productInfo.Name ~= "" then
+			PlaceName = productInfo.Name
+		end
 
 		local function sanitizeFileName(str)
-			return string.sub(string.gsub(string.gsub(string.gsub(str, "[^%w _]", ""), " +", " "), " +$", ""), 1, 240)
+			local clean = string.gsub(str, '[<>:"/\\|?*%c]', "")
+			clean = string.gsub(clean, "%s+", " ")
+			clean = string.gsub(clean, "^[%. ]+", "")
+			clean = string.gsub(clean, "[%. ]+$", "")
+			return string.sub(clean, 1, 240)
+		end
+		PlaceName = sanitizeFileName(PlaceName)
+		if PlaceName == "" then
+			PlaceName = "Experiencia"
 		end
 
 		if ToSaveInstance then
@@ -2707,11 +2715,8 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 
 		if FilePath then
 			placename = FilePath
-		elseif IsModel then
-			placename =
-				sanitizeFileName("model " .. PlaceName .. " " .. (ToSaveInstance or tmp[1] or game):GetFullName())
 		else
-			placename = sanitizeFileName("place " .. PlaceName)
+			placename = PlaceName
 		end
 
 		if OPTIONS.AvoidFileOverwrite and isfile then
