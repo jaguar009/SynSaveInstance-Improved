@@ -3291,6 +3291,25 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 		return false
 	end
 
+	local function hasCharacterMeshContentValue(instance, propertyName)
+		if instance.ClassName ~= "CharacterMesh" then
+			return false
+		end
+
+		local prefix = string.match(propertyName, "^(.*)Id$")
+		if not prefix then
+			return false
+		end
+
+		local readable, content = pcall(index, instance, prefix .. "Content")
+		if not readable or not content then
+			return false
+		end
+
+		local ok, sourceType = pcall(index, content, "SourceType")
+		return ok and sourceType ~= Enum.ContentSourceType.None
+	end
+
 	local function save_hierarchy(hierarchy)
 		for _, instance in next, hierarchy do
 			local __DARKLUA_CONTINUE_64 = false
@@ -3484,6 +3503,10 @@ local function synsaveinstance(CustomOptions, CustomOptions2)
 									__DARKLUA_CONTINUE_65 = true
 									break
 								end
+								if hasCharacterMeshContentValue(instance, PropertyName) then
+									__DARKLUA_CONTINUE_65 = true
+									break
+							end
 
 								-- Special = Property.Special -- ? Read TODO below (must be updated if it's used frequently afterwards)
 
